@@ -68,7 +68,7 @@ QList<QHostAddress> DiscoverService::ScanHost(){
             if(HandleUDP(buf.data(),sender,senderPort)) qDebug() << senderPort <<"收到数据"<<buf; ;
 
             udpinfo=buf.data();
-            emit accepted("来自"+sender.toString()+":"+QString::number(senderPort)+udpinfo);
+
         }
         return QList<QHostAddress>().append(sender);
     });
@@ -103,21 +103,20 @@ bool DiscoverService::HandleUDP(const QByteArray& data,QHostAddress sender,quint
     if(error.error!=QJsonParseError::NoError)
         return false;
     QJsonObject obj=json.object();
-
+    //emit accepted("\n收到来自"+obj["Name"].toString()+"主机:"+sender.toString()+":"+QString::number(port)+"的信息");
     //有效性判断
     //if(obj["Header"].toString()!=udpHeader||obj["Name"].toString()== DevName) return false;
     if(obj["Instance"].toString()==instanceID) return false;
     switch(obj["Method"].toInt()){
         case static_cast<int>(BroadcastType::BROADCAST):
-            qDebug()<<"收到广播";
+            emit accepted("\n收到来自"+obj["Name"].toString()+"主机:"+sender.toString()+":"+QString::number(port)+"的信息---类型:广播");
             break;
         case static_cast<int>(BroadcastType::REQUEST):
-            qDebug()<<"请求设备，现在响应";
-            qDebug()<<sender;
+            emit accepted("\n收到来自"+obj["Name"].toString()+"主机:"+sender.toString()+":"+QString::number(port)+"的信息---类型:查询");
             BroadcastDevice(new QUdpSocket(),BroadcastType::RESPONE,DiscoverPort,QHostAddress(getFirstLocalIPv4()),sender);
             break;
         case static_cast<int>(BroadcastType::RESPONE):
-            qDebug()<<"收到回复";
+            emit accepted("\n收到来自"+obj["Name"].toString()+"主机:"+sender.toString()+":"+QString::number(port)+"的信息---类型:回复");
             //QString name=obj["Name"].toString();
             for (const auto& dev : AvailableDev) { // 范围 for 循环
                 if (dev.name == obj["Name"].toString()||dev.ip.toString()==obj["Ip"].toString()) {       // 判断结构体字段
@@ -126,7 +125,7 @@ bool DiscoverService::HandleUDP(const QByteArray& data,QHostAddress sender,quint
                 }
             }
             AvailableDev.push_back({obj["Name"].toString()
-                                    ,QHostAddress(obj["Ip"].toString())
+                                    ,sender
                                     ,port
                                     ,static_cast<quint16>(obj["Port"].toString().toUShort())
                                     ,obj["Ts"].toString().toULongLong()});

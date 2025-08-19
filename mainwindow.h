@@ -13,6 +13,7 @@
 #include "discoverservice.h"
 #include "sendfile.h"
 #include "receivefile.h"
+#include "toast.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,15 +29,18 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    void InitReceiver();
+    void InitBroadcast();
+
+
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
 
     void on_RefreshIPButton_clicked();
-
-    void on_pushButton_2_clicked();
 
     void on_BrowserButton_clicked();
 
@@ -47,6 +51,12 @@ private slots:
     void on_Sendbutton_clicked();
 
     void on_tabWidget_currentChanged(int index);
+
+
+
+    void on_receiveportLineEdit_editingFinished();
+
+    void on_receiveportLineEdit_textEdited(const QString &arg1);
 
 private:
     Ui::MainWindow *ui;

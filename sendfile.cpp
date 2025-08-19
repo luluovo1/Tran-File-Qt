@@ -11,7 +11,8 @@ SendFile::SendFile(QHostAddress target,quint16 port,QString file,QObject *parent
     fileobj=new QFile(filepath);
     connect(tcpsocket, &QTcpSocket::connected,    this, &SendFile::onConnected);
     connect(tcpsocket, &QTcpSocket::bytesWritten, this, &SendFile::onBytesWritten);
-    connect(tcpsocket, &QTcpSocket::disconnected, this, &SendFile::onDisconnected);
+    //我在ui绑定，这先注释掉了
+    //connect(tcpsocket, &QTcpSocket::disconnected, this, &SendFile::onDisconnected);
     // 监听 ACK
     connect(tcpsocket, &QTcpSocket::readyRead, this, [this]{
         ackData.append(tcpsocket->readAll());
@@ -26,6 +27,7 @@ SendFile::SendFile(QHostAddress target,quint16 port,QString file,QObject *parent
             if (o.value("type")=="ACK_FILE" && o.value("ok").toBool()) {
                 qDebug()<<"收到ACK_disconnected 对比hash"<<o.value("filehash").toString()<< filehash;
                 awaitingAck = false;
+                emit ACKreceiver(true,o.value("filehash").toString());
                 tcpsocket->disconnectFromHost();
             }
         }
@@ -127,6 +129,7 @@ void SendFile::onBytesWritten(qint64 writtenByte){
         QTimer::singleShot(3000, this, [this]{
             if (awaitingAck) {
                 qDebug()<<"超时disconnected";
+                emit ACKreceiver(false,"");
                 tcpsocket->disconnectFromHost();
                 awaitingAck=false;
             }

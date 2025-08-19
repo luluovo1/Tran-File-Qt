@@ -2,17 +2,20 @@
 
 ReceiveFile::ReceiveFile(QObject *parent)
     : QObject{parent}
-{}
-
-ReceiveFile::ReceiveFile(quint16 port){
+{
     this->tcpserver=new QTcpServer();
-
-    bool ok=tcpserver->listen(QHostAddress::AnyIPv4,port);
-    qDebug() << "listen ok?" << ok << tcpserver->errorString();
-    qDebug()<<"constructor"<<port;
     connect(tcpserver,&QTcpServer::newConnection,this,&ReceiveFile::TcpHandler);
+}
 
 
+bool ReceiveFile::startlisten(quint16 port){
+    if(!tcpserver||port>=65535) return false;
+    if(!tcpserver->listen(QHostAddress::AnyIPv4,port)){
+        //qDebug()<<tcpserver->serverError();
+        emit exceptionThrow(ErrorInfo::PORT_BUSY,"当前监听端口"+QString::number(port)+"繁忙\n"+qint16(tcpserver->serverError())+tcpserver->errorString());
+        return false;
+    };
+    return true;
 }
 
 QString ReceiveFile::computeHash(const QString& path){
@@ -40,19 +43,20 @@ void ReceiveFile::TcpHandler(){
     qDebug()<<"接收到连接";
 
     socket=tcpserver->nextPendingConnection();
-
+    //绑定断开检测
     connect(socket,&QTcpSocket::disconnected,this,[this](){
         QTcpSocket *send=(QTcpSocket *)sender();
         qDebug()<<QString::number(float(receivedBytes))<<QString::number(float(filesize));
         if(receivedBytes==filesize) {
-            //receivedBytes=0;
             acceptedheader=false;
-            //file->close();
             qDebug()<<"Serverdisconnected";
         }
-        //file->close();
+
+        if(file->isOpen()) file->close();
         emit receivedSucc(computeHash(filepath+"/"+filename)==filehash);
+
     });
+    //绑定接收数据并写入信号
     connect(socket,&QTcpSocket::readyRead,this,&ReceiveFile::ReadyReadHandler, Qt::UniqueConnection);
 
     emit newConn(socket->peerAddress(),socket->peerPort());
@@ -62,9 +66,8 @@ void ReceiveFile::TcpHandler(){
 
 void ReceiveFile::ReadyReadHandler(){
     QTcpSocket *send=(QTcpSocket *)sender();
-
-    //ui->lineEdit_2->setText(send->readAll());
     data.append(send->readAll());
+
     qDebug()<<"开始读取";
     if(!acceptedheader){
         if (data.size() < 8 + 8 + 4) return;
@@ -112,7 +115,7 @@ void ReceiveFile::ReadyReadHandler(){
             data.remove(0,out);
             receivedBytes+=out;
         }
-        emit respACK();
+
         if (receivedBytes == filesize) {
             emit respACK();
             if (file && file->isOpen()) { /*file->flush();*/ file->close(); }
@@ -125,3 +128,9 @@ void ReceiveFile::ReadyReadHandler(){
         }
     }
 }
+
+void ReceiveFile::closeall(){
+    if(tcpserver->isListening()) tcpserver->close();
+    //if(socket->)
+}
+

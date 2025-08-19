@@ -53,7 +53,7 @@ private slots:
     //void onError();
 signals:
     void progressnum(quint16 num);
-    void ACKreceiver(bool ACKreceiver,const QString& verifyhash);
+    void ACKreceiver(bool isReceived,const QString& verifyhash);
 
 
 };

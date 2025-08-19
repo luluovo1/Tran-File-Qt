@@ -72,33 +72,7 @@
         <attribute name="title">
          <string>发送文件</string>
         </attribute>
-        <widget class="QLabel" name="tranlabel">
-         <property name="geometry">
-          <rect>
-           <x>20</x>
-           <y>515</y>
-           <width>71</width>
-           <height>19</height>
-          </rect>
-         </property>
-         <property name="text">
-          <string>传输状态:</string>
-         </property>
-        </widget>
-        <widget class="QLabel" name="statuslabel">
-         <property name="geometry">
-          <rect>
-           <x>100</x>
-           <y>515</y>
-           <width>69</width>
-           <height>19</height>
-          </rect>
-         </property>
-         <property name="text">
-          <string>未开始</string>
-         </property>
-        </widget>
-        <widget class="QWidget" name="">
+        <widget class="QWidget" name="layoutWidget">
          <property name="geometry">
           <rect>
            <x>20</x>
@@ -108,6 +82,13 @@
           </rect>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2">
+          <item>
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>未刷新或局域网无其他设备接收IP默认本机 文件地址默认桌面</string>
+            </property>
+           </widget>
+          </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout">
             <item>
@@ -172,7 +153,11 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="ReceiveIPLineEdit"/>
+             <widget class="QLineEdit" name="ReceiveIPLineEdit">
+              <property name="text">
+               <string>127.0.0.1</string>
+              </property>
+             </widget>
             </item>
             <item>
              <widget class="QLabel" name="port">
@@ -196,7 +181,7 @@
                <string>99999</string>
               </property>
               <property name="text">
-               <string>12123</string>
+               <string>55555</string>
               </property>
               <property name="maxLength">
                <number>5</number>
@@ -207,8 +192,29 @@
           </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="0,0">
+            <property name="sizeConstraint">
+             <enum>QLayout::SizeConstraint::SetDefaultConstraint</enum>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
             <item>
              <widget class="QTextBrowser" name="textBrowser">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>200</height>
+               </size>
+              </property>
               <property name="frameShape">
                <enum>QFrame::Shape::Box</enum>
               </property>
@@ -230,65 +236,96 @@
            </layout>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_5">
+            <item>
+             <widget class="QLabel" name="label_4">
+              <property name="text">
+               <string>接收文件路径:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="savepathLineEdit"/>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <property name="sizeConstraint">
+             <enum>QLayout::SizeConstraint::SetDefaultConstraint</enum>
+            </property>
+            <property name="rightMargin">
+             <number>480</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="label_5">
+              <property name="maximumSize">
+               <size>
+                <width>200</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>本机接收监听端口:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="receiveportLineEdit">
+              <property name="maximumSize">
+               <size>
+                <width>100</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="inputMethodHints">
+               <set>Qt::InputMethodHint::ImhNone</set>
+              </property>
+              <property name="inputMask">
+               <string>99999</string>
+              </property>
+              <property name="text">
+               <string>55555</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
            <widget class="QProgressBar" name="progressBar">
             <property name="value">
              <number>0</number>
             </property>
            </widget>
           </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_7">
+            <property name="rightMargin">
+             <number>520</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="tranlabel">
+              <property name="text">
+               <string>传输状态:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="statuslabel">
+              <property name="text">
+               <string>未开始</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
          </layout>
         </widget>
        </widget>
        <widget class="QWidget" name="receivePage">
         <attribute name="title">
-         <string>接收文件</string>
+         <string>接收配置</string>
         </attribute>
-        <widget class="QPushButton" name="pushButton">
-         <property name="geometry">
-          <rect>
-           <x>50</x>
-           <y>40</y>
-           <width>93</width>
-           <height>28</height>
-          </rect>
-         </property>
-         <property name="text">
-          <string>接受路径</string>
-         </property>
-        </widget>
-        <widget class="QLineEdit" name="savepathLineEdit">
-         <property name="geometry">
-          <rect>
-           <x>160</x>
-           <y>40</y>
-           <width>511</width>
-           <height>25</height>
-          </rect>
-         </property>
-        </widget>
-        <widget class="QPushButton" name="pushButton_2">
-         <property name="geometry">
-          <rect>
-           <x>630</x>
-           <y>300</y>
-           <width>93</width>
-           <height>28</height>
-          </rect>
-         </property>
-         <property name="text">
-          <string>PushButton</string>
-         </property>
-        </widget>
-        <widget class="QLineEdit" name="lineEdit_2">
-         <property name="geometry">
-          <rect>
-           <x>60</x>
-           <y>130</y>
-           <width>421</width>
-           <height>261</height>
-          </rect>
-         </property>
-        </widget>
        </widget>
       </widget>
      </item>
