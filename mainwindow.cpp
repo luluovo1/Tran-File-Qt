@@ -210,5 +210,3 @@ void MainWindow::on_receiveportLineEdit_editingFinished()
 }
 
 
-
-

@@ -52,11 +52,7 @@ private slots:
 
     void on_tabWidget_currentChanged(int index);
 
-
-
     void on_receiveportLineEdit_editingFinished();
-
-    void on_receiveportLineEdit_textEdited(const QString &arg1);
 
 private:
     Ui::MainWindow *ui;
