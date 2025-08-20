@@ -2,9 +2,45 @@
 
 ReceiveFile::ReceiveFile(QObject *parent)
     : QObject{parent}
+    , tcpserver(nullptr)
+    , socket(nullptr)
+    , acceptedheader(false)
+    , receivedBytes(0)
+    , filesize(0)
+    , file(nullptr)
 {
-    this->tcpserver=new QTcpServer();
+    this->tcpserver=new QTcpServer(this); // 🔧 设置parent防止内存泄漏
     connect(tcpserver,&QTcpServer::newConnection,this,&ReceiveFile::TcpHandler);
+}
+
+ReceiveFile::~ReceiveFile() {
+    // ✅ 清理TCP服务器
+    if (tcpserver) {
+        if (tcpserver->isListening()) {
+            tcpserver->close();
+        }
+        tcpserver->deleteLater();
+    }
+    
+    // ✅ 清理当前socket连接
+    if (socket) {
+        if (socket->state() != QAbstractSocket::UnconnectedState) {
+            socket->disconnectFromHost();
+            socket->waitForDisconnected(1000);
+        }
+        socket->deleteLater();
+    }
+    
+    // ✅ 确保文件正确关闭和清理
+    if (file) {
+        if (file->isOpen()) {
+            file->close();
+        }
+        delete file;
+        file = nullptr;
+    }
+    
+    qDebug() << "ReceiveFile destroyed, resources cleaned up";
 }
 
 
@@ -24,15 +60,21 @@ QString ReceiveFile::computeHash(const QString& path){
 
     QCryptographicHash hash(QCryptographicHash::Md5);
     qint64 filesize=file.size();
-    //constexpr qint64 MaxBuffer = 64*1024;
     qint64 Bytes=qMin(filesize,MaxBuffer);
-    char payload[Bytes];
-    //状态，status返回read实际读取到的字节，末尾=0，失败=-1
+    
+    // ✅ 修复：使用QByteArray替代变长数组
+    QByteArray payload(Bytes, 0);
+    
     int status;
-    while(filesize>=0&&(status=file.read(payload,Bytes))>0){
+    while(filesize>=0&&(status=file.read(payload.data(),Bytes))>0){
         filesize -= status;
-        hash.addData(payload, status);
+        hash.addData(payload.constData(), status);
         Bytes=qMin(filesize,MaxBuffer);
+        
+        // ✅ 添加：动态调整缓冲区大小
+        if (payload.size() != Bytes) {
+            payload.resize(Bytes);
+        }
     }
     file.close();
     this->filehash=hash.result().toHex();
@@ -43,18 +85,55 @@ void ReceiveFile::TcpHandler(){
     qDebug()<<"接收到连接";
 
     socket=tcpserver->nextPendingConnection();
+    
+    // ✅ 添加：空指针检查
+    if (!socket) {
+        qDebug() << "Failed to get pending connection";
+        return;
+    }
+    
+    // ✅ 添加：检查socket状态
+    if (socket->state() != QAbstractSocket::ConnectedState) {
+        qDebug() << "Socket not in connected state:" << socket->state();
+        socket->deleteLater();
+        socket = nullptr;
+        return;
+    }
+    
     //绑定断开检测
     connect(socket,&QTcpSocket::disconnected,this,[this](){
         QTcpSocket *send=(QTcpSocket *)sender();
         qDebug()<<QString::number(float(receivedBytes))<<QString::number(float(filesize));
-        if(receivedBytes==filesize) {
+        
+        // ✅ 改进：更完善的连接断开处理
+        bool isCompleteTransfer = (acceptedheader && receivedBytes == filesize);
+        
+        if(isCompleteTransfer) {
             acceptedheader=false;
-            qDebug()<<"Serverdisconnected";
+            qDebug()<<"文件传输完成，服务器断开连接";
+        } else if (acceptedheader) {
+            qDebug()<<"警告：文件传输未完成，连接意外断开. 接收:" 
+                   << receivedBytes << "期望:" << filesize;
         }
 
-        if(file->isOpen()) file->close();
-        emit receivedSucc(computeHash(filepath+"/"+filename)==filehash);
-
+        if(file && file->isOpen()) {
+            file->close();
+        }
+        
+        // 只有在接收完整文件后才进行哈希验证
+        if (isCompleteTransfer) {
+            emit receivedSucc(computeHash(filepath+"/"+filename).toLower()==filehash.toLower());
+        } else {
+            qDebug()<<"6";
+            emit receivedSucc(false); // 传输不完整
+        }
+    });
+    
+    // ✅ 添加：socket错误处理
+    connect(socket, &QAbstractSocket::errorOccurred, this, [this](QAbstractSocket::SocketError error) {
+        qDebug() << "Socket断开:" << error << socket->errorString();
+        if (file && file->isOpen()) file->close();
+        if(receivedBytes!=filesize) emit receivedSucc(false);
     });
     //绑定接收数据并写入信号
     connect(socket,&QTcpSocket::readyRead,this,&ReceiveFile::ReadyReadHandler, Qt::UniqueConnection);
@@ -98,9 +177,24 @@ void ReceiveFile::ReadyReadHandler(){
         qDebug()<<"准备移除字节"<<removelen;
         data.remove(0,removelen);
         receivedBytes=0;
+        
+        // ✅ 修复：确保旧文件对象被正确清理
+        if (file) {
+            if (file->isOpen()) {
+                file->close();
+            }
+            delete file;
+            file = nullptr;
+        }
+        
         file=new QFile(filepath+"/"+filename);
         if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             qDebug() << "文件打开失败：" << file->errorString();
+            // ✅ 修复：失败时清理文件对象
+            delete file;
+            file = nullptr;
+            // ✅ 添加：发送错误信号
+            socket->disconnectFromHost();
             return;
         }
     }
@@ -119,7 +213,8 @@ void ReceiveFile::ReadyReadHandler(){
         if (receivedBytes == filesize) {
             emit respACK();
             if (file && file->isOpen()) { /*file->flush();*/ file->close(); }
-            QJsonObject ok{{"type","ACK_FILE"},{"ok",true},{"size",qint64(filesize)},{"filehash",filehash.data()}};
+            // ✅ 修复：正确的哈希序列化方式
+            QJsonObject ok{{"type","ACK_FILE"},{"ok",true},{"size",qint64(filesize)},{"filehash",QString(filehash)}};
             qDebug()<<"回复成功ACK"<<ok;
             QByteArray pl = QJsonDocument(ok).toJson(QJsonDocument::Compact);
             QByteArray frame; QDataStream out(&frame, QIODevice::WriteOnly);

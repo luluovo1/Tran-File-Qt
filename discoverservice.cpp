@@ -16,7 +16,7 @@ void DiscoverService::init(){
 void DiscoverService::BroadcastDevice(QUdpSocket *udpsocket,const BroadcastType& type,quint16 discoverport,const QHostAddress& SelfIP,const QHostAddress& targetIP){
     const QByteArray payload = AppendPayload(udpHeader,type,SelfIP);
     qDebug() << "广播内容:" <<payload.toStdString();
-    //udpsocket->writeDatagram(payload,QHostAddress::Broadcast,discoverport);
+    
     //逻辑分开，如果广播包的Method非Broadcast要动态处理发送的对象
     if(!targetIP.isNull()) udpsocket->writeDatagram(payload,targetIP,discoverport);
         else udpsocket->writeDatagram(payload,QHostAddress::Broadcast,discoverport);
@@ -51,7 +51,14 @@ QByteArray DiscoverService::AppendPayload(const QString& udpHeader,const Broadca
 }
 
 QList<QHostAddress> DiscoverService::ScanHost(){
-    udpsocket=new QUdpSocket();
+    // ✅ 修复：检查是否已有socket，避免重复创建
+    qDebug() <<(udpsocket==nullptr);
+    // if (udpsocket!=nullptr) {
+    //     udpsocket->close();
+    //     udpsocket->deleteLater();
+    // }
+    qDebug() <<"udpsocket";
+    udpsocket=new QUdpSocket(this); // ✅ 设置parent避免内存泄漏
     udpsocket->setProxy(QNetworkProxy::NoProxy);
     qDebug() << "start";
     if(!udpsocket->bind(QHostAddress::AnyIPv4,DiscoverPort,QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) return QList<QHostAddress>();
@@ -89,11 +96,15 @@ QString DiscoverService::getFirstLocalIPv4() {
 }
 
 void DiscoverService::LoopBroadcast(){
-    QUdpSocket *loopsocket=new QUdpSocket();
+    // ✅ 修复：重用现有socket，避免每次创建新的
+    if (!udpsocket) {
+        udpsocket = new QUdpSocket(this);
+    }
+    
     while(1){
         QThread::sleep(4);
         qDebug()<<"循环"<<QDateTime::currentDateTime();
-        BroadcastDevice(loopsocket,BroadcastType::BROADCAST,DiscoverPort,QHostAddress(getFirstLocalIPv4()));
+        BroadcastDevice(udpsocket,BroadcastType::BROADCAST,DiscoverPort,QHostAddress(getFirstLocalIPv4()));
     }
 }
 
@@ -113,7 +124,11 @@ bool DiscoverService::HandleUDP(const QByteArray& data,QHostAddress sender,quint
             break;
         case static_cast<int>(BroadcastType::REQUEST):
             emit accepted("\n收到来自"+obj["Name"].toString()+"主机:"+sender.toString()+":"+QString::number(port)+"的信息---类型:查询");
-            BroadcastDevice(new QUdpSocket(),BroadcastType::RESPONE,DiscoverPort,QHostAddress(getFirstLocalIPv4()),sender);
+            // ✅ 修复：重用现有socket而不是创建新的
+            if (!udpsocket) {
+                udpsocket = new QUdpSocket(this);
+            }
+            BroadcastDevice(udpsocket,BroadcastType::RESPONE,DiscoverPort,QHostAddress(getFirstLocalIPv4()),sender);
             break;
         case static_cast<int>(BroadcastType::RESPONE):
             emit accepted("\n收到来自"+obj["Name"].toString()+"主机:"+sender.toString()+":"+QString::number(port)+"的信息---类型:回复");

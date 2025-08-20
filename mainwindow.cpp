@@ -9,13 +9,23 @@ MainWindow::MainWindow(QWidget *parent)
     //初始化
     ui->setupUi(this);
     this->setWindowTitle("梁宠文件传输");
-    ui->tabWidget->setCurrentIndex(0);
+    //ui->tabWidget->setCurrentIndex(0);
     ui->savepathLineEdit->setText(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation));
     setAcceptDrops(true);
 
-    InitBroadcast();
-    receivefile=new ReceiveFile();
-    InitReceiver();
+    // 🔧 安全初始化成员变量
+    broad = nullptr;
+    sendfile = nullptr;
+    receivefile = nullptr;
+    qDebug() << "start";
+    // 🔧 添加异常保护
+    try {
+        InitBroadcast();
+        receivefile=new ReceiveFile(this); // 设置parent
+        InitReceiver();
+    } catch (...) {
+        qDebug() << "init failed MainWindow Constructor";
+    }
 
 }
 
@@ -27,18 +37,27 @@ void MainWindow::InitBroadcast(){
     // connect(broadthread, &QThread::started, broadthread_body, &DiscoverService::LoopBroadcast);
     //broadthread->start();
 
-    broad=new DiscoverService();
-    broad->instanceID=QUuid::createUuid().toString(QUuid::WithoutBraces);
-    connect(broad, &DiscoverService::accepted, this, [this](const QString& txt) {
-        ui->textBrowser->append(txt);
-    });
-    broad->ScanHost();
-
-    connect(broad,&DiscoverService::updateDev,this,[this](){
-        for(const auto& dev : broad->AvailableDev){
-            ui->comboBox->addItem(dev.name+"  :  "+dev.ip.toString());
-        }
-    });
+    try {
+        broad=new DiscoverService(this); // 🔧 设置parent
+        broad->instanceID=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        
+        connect(broad, &DiscoverService::accepted, this, [this](const QString& txt) {
+            ui->textBrowser->append(txt);
+        });
+        qDebug() << "1";
+        broad->ScanHost();
+        qDebug() << "2";
+        connect(broad,&DiscoverService::updateDev,this,[this](){
+            // 🔧 添加安全检查
+            if (!broad || broad->AvailableDev.isEmpty()) return;
+            for(const auto& dev : broad->AvailableDev){
+                ui->comboBox->addItem(dev.name+"  :  "+dev.ip.toString());
+            }
+        });
+    } catch (...) {
+        qDebug() << "InitBroadcast 异常，设置broad为nullptr";
+        broad = nullptr;
+    }
 }
 
 
@@ -52,8 +71,10 @@ void MainWindow::InitReceiver(){
         Toast::showBottomRight("<font color='white'>接收端:收到文件\n主机:"+sourceIP.toString()+"\n端口:"+QString::number(sourcePort),5000);
     });
     connect(receivefile,&ReceiveFile::receivedSucc,this,[this](bool EqualhashOrnot){
+        qDebug()<<EqualhashOrnot;
         ReceiveFile *receiver=(ReceiveFile *)sender();
         QString isEqual=EqualhashOrnot?"一致,成功!":"不一致,失败!";
+        qDebug()<<isEqual;
         QString text="\n接收端:文件名:"+receiver->filename+"大小:"+QString::number(receiver->filesize)+"\nHash:"+receiver->filehash+"\n文件";
         ui->textBrowser->append("<font color='"+QString(EqualhashOrnot?"green":"red")+"'>接收文件成功"+text+isEqual+"</font>");
         ui->textBrowser->append("<font color='green'>接收端:当前连接已断开</font>");
@@ -68,13 +89,35 @@ void MainWindow::InitReceiver(){
 
 MainWindow::~MainWindow()
 {
+    // ✅ 改进：确保所有资源正确清理
+    if (broad) {
+        broad->deleteLater();
+    }
+    
+    if (sendfile) {
+        sendfile->deleteLater();
+    }
+    
+    if (receivefile) {
+        receivefile->closeall();
+        receivefile->deleteLater();
+    }
+    
     delete ui;
 }
 
 void MainWindow::on_RefreshIPButton_clicked()
 {
+    // 🔧 添加空指针检查
+    if (!broad) {
+        qDebug() << "广播服务未初始化，无法刷新设备";
+        QMessageBox::warning(this, "警告", "设备发现服务未正常启动，请重启程序");
+        return;
+    }
+    
     broad->AvailableDev.clear();
     ui->textBrowser->clear();
+    ui->comboBox->clear(); // 🔧 清空下拉框避免残留数据
     broad->RequestUDP();
 }
 
@@ -125,44 +168,99 @@ void MainWindow::on_PortLineEdit_textEdited(const QString &arg1)
 
 void MainWindow::on_comboBox_currentIndexChanged(int index)
 {
-    ui->ReceiveIPLineEdit->setText(broad->AvailableDev.at(index).ip.toString());
+    // 🔧 添加空指针和有效性检查
+    if (!broad) {
+        qDebug() << "广播服务未初始化";
+        ui->ReceiveIPLineEdit->setText("127.0.0.1");
+        return;
+    }
+    
+    if (broad->AvailableDev.isEmpty()) {
+        qDebug() << "设备列表为空";
+        ui->ReceiveIPLineEdit->setText("127.0.0.1");
+        return;
+    }
+    
+    // ✅ 添加：边界检查防止崩溃
+    if (index >= 0 && index < broad->AvailableDev.size()) {
+        ui->ReceiveIPLineEdit->setText(broad->AvailableDev.at(index).ip.toString());
+    } else {
+        qDebug() << "Invalid device index:" << index << "Available devices:" << broad->AvailableDev.size();
+        // ✅ 设置默认IP
+        ui->ReceiveIPLineEdit->setText("127.0.0.1");
+    }
 }
 
 
 void MainWindow::on_Sendbutton_clicked()
 {
+    qDebug()<<"0";
     QString fileName=ui->FileNameLineEdit->text();
     if(!QFileInfo(fileName).isFile()) {
         QMessageBox::warning(this,"Failed","检查输入文件");
         return;
     }
+    
+    // ✅ 添加：清理之前的发送任务
+    if (sendfile) {
+        qDebug()<<"2";
+        if (sendfile->tcpsocket && sendfile->tcpsocket->state() != QAbstractSocket::UnconnectedState) {
+            QMessageBox::information(this, "提示", "当前有文件正在传输中，请等待完成");
+            qDebug()<<"3";
+            return;
+        }
+        
+        // 🔧 断开所有信号连接，防止悬空指针回调
+        disconnect(sendfile, nullptr, this, nullptr);
+        if (sendfile->tcpsocket) {
+            disconnect(sendfile->tcpsocket, nullptr, this, nullptr);
+        }
+        
+        // 🔧 正确清理旧对象
+        sendfile->deleteLater();
+        sendfile = nullptr;
+    }
+    qDebug()<<"1";
     QHostAddress target=QHostAddress(ui->ReceiveIPLineEdit->text());
     quint16 port=ui->PortLineEdit->text().toUShort();
-    SendFile *send=new SendFile(target,port,fileName);
+    // ✅ 修复：使用成员变量并设置parent
+    sendfile = new SendFile(target,port,fileName,this);
     qDebug()<<"发送："<<fileName<<target<<port;
-    ui->textBrowser->append("<font color='blue'>发送->文件名:"+send->filepath+" 大小:"+QString::number(send->fileobj->size())+"\nHash:"+send->filehash+"</font>");
+    
+    // 🔧 添加文件对象有效性检查
+    if (!sendfile || !sendfile->fileobj || !sendfile->fileobj->exists()) {
+        QMessageBox::critical(this, "错误", "无法打开选择的文件: " + fileName);
+        if (sendfile) {
+            sendfile->deleteLater();
+            sendfile = nullptr;
+        }
+        return;
+    }
+    
+    ui->textBrowser->append("<font color='blue'>发送->文件名:"+sendfile->filepath+" 大小:"+QString::number(sendfile->fileobj->size())+"\nHash:"+sendfile->filehash+"</font>");
     //进度条下方的状态信息
-    connect(send->tcpsocket,&QTcpSocket::connected,this,[this](){
+    connect(sendfile->tcpsocket,&QTcpSocket::connected,this,[this](){
         QTcpSocket *send=(QTcpSocket *)sender();
         ui->statuslabel->setText("连接成功");
     });
 
     //绑定错误以及端口连接
-    connect(send->tcpsocket,&QTcpSocket::disconnected,this,[this](){
+    connect(sendfile->tcpsocket,&QTcpSocket::disconnected,this,[this](){
         ui->textBrowser->append("<font color='blue'>发送端:当前连接已断开</font>");
     });
-    connect(send->tcpsocket, &QAbstractSocket::errorOccurred, this,[this](){
-        ui->statuslabel->setText("<font color='red'>发生异常</font>");
+    connect(sendfile->tcpsocket, &QAbstractSocket::errorOccurred, this,[this](QAbstractSocket::SocketError error){
+        ui->statuslabel->setText("<font color='red'>网络错误: " + sendfile->tcpsocket->errorString() + "</font>");
+        qDebug() << "Socket error:" << error << sendfile->tcpsocket->errorString();
     });
 
     //进度条实现，信号由每次发送端写入tcp提供
-    connect(send,&SendFile::progressnum,this,[this](quint16 num){
+    connect(sendfile,&SendFile::progressnum,this,[this](quint16 num){
         ui->progressBar->setValue(int(num));
         if(num==100) ui->statuslabel->setText("<font color='green'>发送完毕</font>");
     });
 
     //绑定接收端返回的ACK信号和哈希，提供给发送端
-    connect(send,&SendFile::ACKreceiver,this,[this](bool isReceived,const QString& verifyhash){
+    connect(sendfile,&SendFile::ACKreceiver,this,[this](bool isReceived,const QString& verifyhash){
         SendFile *sendobj=(SendFile *)sender();
         QString title;
         QString text;
@@ -171,7 +269,7 @@ void MainWindow::on_Sendbutton_clicked()
             text="发送完毕,收到ACK响应\n源 Hash:"+sendobj->filehash+"\n输出 Hash:"+verifyhash+"\n"+((sendobj->filehash==verifyhash)?"对比一致,成功":"文件不一致");
         }else{
             title="发送端：失败";
-            text="发送完毕,但收到ACK响应,文件可能发送失败";
+            text="发送完毕,但未收到ACK响应,文件可能发送失败";
         }
         QMessageBox *msgBox = new QMessageBox(
             QMessageBox::Information,
@@ -185,7 +283,7 @@ void MainWindow::on_Sendbutton_clicked()
         msgBox->show();
     });
 
-    send->TCPconnect();
+    sendfile->TCPconnect();
 }
 
 

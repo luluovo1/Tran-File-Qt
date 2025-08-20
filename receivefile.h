@@ -17,6 +17,9 @@ class ReceiveFile : public QObject
     Q_OBJECT
 public:
     explicit ReceiveFile(QObject *parent = nullptr);
+    
+    // ✅ 添加：析构函数确保资源清理
+    ~ReceiveFile();
 
     enum class ErrorInfo{
         PORT_BUSY,

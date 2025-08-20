@@ -21,6 +21,9 @@ class SendFile : public QObject
 public:
     explicit SendFile(QObject *parent = nullptr);
     explicit SendFile(QHostAddress target,quint16 port,QString file,QObject *parent = nullptr);
+    
+    // ✅ 添加：析构函数确保资源清理
+    ~SendFile();
 
     QHostAddress targetip;
     quint16 targetport;

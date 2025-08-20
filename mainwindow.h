@@ -57,10 +57,10 @@ private slots:
 private:
     Ui::MainWindow *ui;
 
-    DiscoverService *broad;
+    DiscoverService *broad = nullptr;      // 🔧 显式初始化防止悬空指针
 
-    SendFile *sendfile;
-    ReceiveFile *receivefile;
+    SendFile *sendfile = nullptr;          // 🔧 显式初始化防止悬空指针
+    ReceiveFile *receivefile = nullptr;    // 🔧 显式初始化防止悬空指针
 
 signals:
 
